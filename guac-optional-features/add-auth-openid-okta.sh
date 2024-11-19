@@ -39,6 +39,8 @@ echo "openid-jwks-endpoint: " >>/etc/guacamole/guacamole.properties
 echo "openid-issuer: " >>/etc/guacamole/guacamole.properties
 echo "openid-client-id: " >>/etc/guacamole/guacamole.properties
 echo "openid-redirect-uri: " >>/etc/guacamole/guacamole.properties
+echo "extension-priority: *, openid" >>/etc/guacamole/guacamole.properties
+
 echo
 systemctl restart ${TOMCAT_VERSION}
 systemctl restart guacd
@@ -53,6 +55,7 @@ echo "openid-jwks-endpoint: ??????????"
 echo "openid-issuer: ??????????"
 echo "openid-client-id: ??????????"
 echo "openid-redirect-uri: ??????????"
+echo "extension-priority: *, openid OR openid only"
 echo
 echo "Once this change is complete, restart Guacamole with sudo systemctl restart ${TOMCAT_VERSION}"
 
