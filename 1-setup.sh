@@ -86,6 +86,11 @@ GITHUB="https://raw.githubusercontent.com/itiligent/Guacamole-Install/main"
 GUAC_VERSION="1.5.5"
 GUAC_SOURCE_LINK="http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUAC_VERSION}"
 
+# PostgreSQL CloudSQL Proxy (CloudSQL PostgreSQL DB)
+POSTGRES_CLOUD_SQL_PROXY_VERS="2.7.2"
+POSTGRES_JDBC_DRIVER_VERS="42.6.0"
+POSTGRES_JDBC_DRIVER_URI="https://jdbc.postgresql.org/download/postgresql-${POSTGRES_JDBC_DRIVER_VERS}.jar"
+
 # MySQL Connector/J version to install
 MYSQLJCON="9.1.0"
 MYSQLJCON_SOURCE_LINK="https://dev.mysql.com/get/Downloads/Connector-J/mysql-connector-j-${MYSQLJCON}.tar.gz"
@@ -109,6 +114,15 @@ INSTALL_LOG="${DOWNLOAD_DIR}/guacamole_install.log"
 #######################################################################################################################
 SERVER_NAME=""                  # Server hostname (blank = use the current hostname)
 LOCAL_DOMAIN=""                 # Local DNS namespace/domain suffix (blank = keep the current suffix)
+USE_POSTGRES=""                 # Use PostgreSQL within the solution (alternative is MySQL) (true/false)
+INSTALL_POSTGRES=""             # Install PostgreSQL locally (true/false)
+POSTGRES_HOST=""                # Blank "" = localhost PostgreSQL install, adding a specific IP address will assume a remote PostgreSQL instance
+POSTGRES_PORT=""                # If blank "" default is 5432
+POSTGRES_GUAC_DB=""             # If blank "" default is guacamole_db
+POSTGRES_GUAC_USER=""           # If blank "" default is guacamole_user
+POSTGRES_ROOT_PWD=""            # Manadatory entry here or at script prompt
+POSTGRES_GUAC_PWD=""            # Manadatory entry here or at script prompt
+USE_MYSQL=""                    # Use MySQL within the solution (alternative is PostgreSQL) (true/false)
 INSTALL_MYSQL=""                # Install MySQL locally (true/false)
 SECURE_MYSQL=""                 # Apply mysql secure configuration tool (true/false)
 MYSQL_HOST=""                   # Blank "" = localhost MySQL install, adding a specific IP address will assume a remote MySQL instance
@@ -386,9 +400,23 @@ if [[ -z ${RDP_SHARE_HOST} ]]; then
     RDP_SHARE_HOST=$SERVER_NAME
 fi
 
+
+# Prompt to use either MySQL or PostgreSQL
+echo -e "${LGREEN}DB selection options:${GREY}"
+if [[ -z ${USE_MYSQL} ]]; then
+    echo -e -n "SQL: Do you want to use MySQL for this solution? (LOCAL and REMOTE options exist for both) [y/n] [default y]: ${GREY}"
+    read PROMPT
+    if [[ ${PROMPT} =~ ^[Nn]$ ]]; then
+        USE_MYSQL=false
+    else
+        USE_MYSQL=true
+        USE_POSTGRES=false
+    fi
+fi
+
 # Prompt to install MySQL
 echo -e "${LGREEN}MySQL setup options:${GREY}"
-if [[ -z ${INSTALL_MYSQL} ]]; then
+if [[ -z ${INSTALL_MYSQL} ]] && [[ "${USE_MYSQL}" = true ]]; then
     echo -e -n "SQL: Install MySQL locally? (For a REMOTE MySQL server select 'n') [y/n] [default y]: ${GREY}"
     read PROMPT
     if [[ ${PROMPT} =~ ^[Nn]$ ]]; then
@@ -399,7 +427,7 @@ if [[ -z ${INSTALL_MYSQL} ]]; then
 fi
 
 # Prompt to apply the Mysql secure installation locally
-if [[ -z ${SECURE_MYSQL} ]] && [[ "${INSTALL_MYSQL}" = true ]]; then
+if [[ -z ${SECURE_MYSQL} ]] && [[ "${INSTALL_MYSQL}" = true ]] && [[ "${USE_MYSQL}" = true ]]; then
     echo -e -n "${GREY}SQL: Apply MySQL secure installation settings to LOCAL db? [y/n] [default y]: ${GREY}"
     read PROMPT
     if [[ ${PROMPT} =~ ^[Nn]$ ]]; then
@@ -410,7 +438,7 @@ if [[ -z ${SECURE_MYSQL} ]] && [[ "${INSTALL_MYSQL}" = true ]]; then
 fi
 
 # Prompt for additional MYSQL settings and values
-if [[ "${INSTALL_MYSQL}" = false ]]; then
+if [[ "${INSTALL_MYSQL}" = false ]] && [[ "${USE_MYSQL}" = true ]]; then
     [[ -z "${MYSQL_HOST}" ]] &&
         read -p "SQL: Enter remote MySQL server hostname or IP: " MYSQL_HOST
     [[ -z "${MYSQL_PORT}" ]] &&
@@ -421,24 +449,24 @@ if [[ "${INSTALL_MYSQL}" = false ]]; then
         read -p "SQL: Enter remote Guacamole user name [guacamole_user]: " GUAC_USER
 fi
 # Checking if a mysql host given, if not set a default
-if [[ -z "${MYSQL_HOST}" ]]; then
+if [[ -z "${MYSQL_HOST}" ]] && [[ "${USE_MYSQL}" = true ]]; then
     MYSQL_HOST="localhost"
 fi
 # Checking if a mysql port given, if not set a default
-if [[ -z "${MYSQL_PORT}" ]]; then
+if [[ -z "${MYSQL_PORT}" ]] && [[ "${USE_MYSQL}" = true ]]; then
     MYSQL_PORT="3306"
 fi
 # Checking if a database name given, if not set a default
-if [[ -z "${GUAC_DB}" ]]; then
+if [[ -z "${GUAC_DB}" ]] && [[ "${USE_MYSQL}" = true ]]; then
     GUAC_DB="guacamole_db"
 fi
 # Checking if a mysql user given, if not set a default
-if [[ -z "${GUAC_USER}" ]]; then
+if [[ -z "${GUAC_USER}" ]] && [[ "${USE_MYSQL}" = true ]]; then
     GUAC_USER="guacamole_user"
 fi
 
 # Prompt for MySQL root password, confirm correct password entry and prevent blank passwords. No root pw needed for remote instances.
-if [[ -z "${MYSQL_ROOT_PWD}" ]] && [[ "${INSTALL_MYSQL}" = true ]]; then
+if [[ -z "${MYSQL_ROOT_PWD}" ]] && [[ "${INSTALL_MYSQL}" = true ]] && [[ "${USE_MYSQL}" = true ]]; then
     while true; do
         read -s -p "SQL: Enter ${MYSQL_HOST}'s MySQL ROOT password: " MYSQL_ROOT_PWD
         echo
@@ -450,7 +478,7 @@ if [[ -z "${MYSQL_ROOT_PWD}" ]] && [[ "${INSTALL_MYSQL}" = true ]]; then
 fi
 
 # Prompt for Guacamole User password, confirm correct password entry and prevent blank passwords
-if [[ -z "${GUAC_PWD}" ]]; then
+if [[ -z "${GUAC_PWD}" ]] && [[ "${USE_MYSQL}" = true ]]; then
     while true; do
         read -s -p "SQL: Enter ${MYSQL_HOST}'s MySQL ${GUAC_USER} password: " GUAC_PWD
         echo
@@ -460,6 +488,90 @@ if [[ -z "${GUAC_PWD}" ]]; then
         echo -e "${LRED}Passwords don't match or can't be null. Please try again.${GREY}" 1>&2
     done
 fi
+
+#######################################################################################################################################################
+
+# Prompt to use either MySQL or PostgreSQL
+echo -e "${LGREEN}DB selection options:${GREY}"
+if [[ -z ${USE_POSTGRES} ]]; then
+    echo -e -n "SQL: Do you want to use PostgreSQL for this solution? (LOCAL and REMOTE options exist for both) [y/n] [default n]: ${GREY}"
+    read PROMPT
+    if [[ ${PROMPT} =~ ^[Nn]$ ]]; then
+        USE_POSTGRES=false
+    else
+        USE_POSTGRES=true
+    fi
+fi
+
+
+# Prompt to install PostgreSQL
+echo -e "${LGREEN}PostgreSQL setup options:${GREY}"
+if [[ -z ${INSTALL_POSTGRES} ]] && [[ "${USE_POSTGRES}" = true ]]; then
+    echo -e -n "SQL: Install PostgreSQL locally? (For a REMOTE PostgreSQL server select 'n') [y/n] [default y]: ${GREY}"
+    read PROMPT
+    if [[ ${PROMPT} =~ ^[Nn]$ ]]; then
+        INSTALL_POSTGRES=false
+        INSTALL_MYSQL=false
+    else
+        INSTALL_POSTGRES=true
+    fi
+fi
+
+# Prompt for additional PostgreSQL settings and values
+if [[ "${INSTALL_POSTGRES}" = false ]] && [[ "${USE_POSTGRES}" = true ]]; then
+    [[ -z "${POSTGRES_HOST}" ]] &&
+        read -p "SQL: Enter remote MySQL server hostname or IP: " POSTGRES_HOST
+    [[ -z "${POSTGRES_PORT}" ]] &&
+        read -p "SQL: Enter remote MySQL server port [3306]: " POSTGRES_PORT
+    [[ -z "${POSTGRES_GUAC_DB}" ]] &&
+        read -p "SQL: Enter remote Guacamole database name [guacamole_db]: " POSTGRES_GUAC_DB
+    [[ -z "${POSTGRES_GUAC_USER}" ]] &&
+        read -p "SQL: Enter remote Guacamole user name [guacamole_user]: " POSTGRES_GUAC_USER
+fi
+# Checking if a PostgreSQL host given, if not set a default
+if [[ -z "${POSTGRES_HOST}" ]] && [[ "${USE_POSTGRES}" = true ]]; then
+    POSTGRES_HOST="localhost"
+fi
+# Checking if a PostgreSQL port given, if not set a default
+if [[ -z "${POSTGRES_PORT}" ]] && [[ "${USE_POSTGRES}" = true ]]; then
+    POSTGRES_PORT="5432"
+fi
+# Checking if a PostgreSQL database name given, if not set a default
+if [[ -z "${POSTGRES_GUAC_DB}" ]] && [[ "${USE_POSTGRES}" = true ]]; then
+    POSTGRES_GUAC_DB="guacamole_db"
+fi
+# Checking if a PostgreSQL user given, if not set a default
+if [[ -z "${POSTGRES_GUAC_USER}" ]] && [[ "${USE_POSTGRES}" = true ]]; then
+    POSTGRES_GUAC_USER="guacamole_user"
+fi
+
+# Prompt for PostgreSQL root password, confirm correct password entry and prevent blank passwords. No root pw needed for remote instances.
+if [[ -z "${POSTGRES_ROOT_PWD}" ]] && [[ "${INSTALL_POSTGRES}" = true ]] && [[ "${USE_POSTGRES}" = true ]]; then
+    while true; do
+        read -s -p "SQL: Enter ${POSTGRES_HOST}'s PostgreSQL ROOT password: " MYSQL_ROOT_PWD
+        echo
+        read -s -p "SQL: Confirm ${POSTGRES_HOST}'s PostgreSQL ROOT password: " PROMPT2
+        echo
+        [[ "${POSTGRES_ROOT_PWD}" = "${PROMPT2}" ]] && [[ "${POSTGRES_ROOT_PWD}" != "" ]] && [[ "${PROMPT2}" != "" ]] && break
+        echo -e "${LRED}Passwords don't match or can't be null. Please try again.${GREY}" 1>&2
+    done
+fi
+
+# Prompt for PostgreSQL Guacamole User password, confirm correct password entry and prevent blank passwords
+if [[ -z "${POSTGRES_GUAC_PWD}" ]] && [[ "${INSTALL_POSTGRES}" = true ]] && [[ "${USE_POSTGRES}" = true ]]; then
+    while true; do
+        read -s -p "SQL: Enter ${POSTGRES_HOST}'s PostgreSQL ${GUAC_USER} password: " POSTGRES_GUAC_PWD
+        echo
+        read -s -p "SQL: Confirm ${POSTGRES_HOST}'s PostgreSQL ${GUAC_USER} password: " PROMPT2
+        echo
+        [[ "${POSTGRES_GUAC_PWD}" = "${PROMPT2}" ]] && [[ "${POSTGRES_GUAC_PWD}" != "" ]] && [[ "${PROMPT2}" != "" ]] && break
+        echo -e "${LRED}Passwords don't match or can't be null. Please try again.${GREY}" 1>&2
+    done
+fi
+#######################################################################################################################################################
+
+
+
 
 # Prompt for preferred backup notification email address
 if [[ -z ${BACKUP_EMAIL} ]]; then
@@ -471,6 +583,7 @@ if [[ -z ${BACKUP_EMAIL} ]]; then
         # echo -e "${LRED}You must enter an email address. Please try again.${GREY}" 1>&2
     done
 fi
+
 # If no backup notification email address is given, provide a non blank default value
 if [[ -z ${BACKUP_EMAIL} ]]; then
     BACKUP_EMAIL="backup-email@yourdomain.com"
