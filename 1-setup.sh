@@ -119,8 +119,9 @@ MYSQL_ROOT_PWD=""               # Manadatory entry here or at script prompt
 GUAC_PWD=""                     # Manadatory entry here or at script prompt
 GUACD_ACCOUNT="guacd"           # Service account guacd will run under (and will be very heavily locked down)
 DB_TZ=$(cat /etc/timezone)      # Blank "" defaults to UTC, for local timezone: $(cat /etc/timezone)
-INSTALL_TOTP=""                 # Add TOTP MFA extension (true/false), can't be installed simultaneously with DUO)
-INSTALL_DUO=""                  # Add DUO MFA extension (true/false, can't be installed simultaneously with TOTP)
+INSTALL_TOTP=""                 # Add TOTP MFA extension (true/false), can't be installed simultaneously with DUO and/or OKTA)
+INSTALL_DUO=""                  # Add DUO MFA extension (true/false, can't be installed simultaneously with TOTP and/or OKTA)
+INSTALL_OKTA=""                  # Add OkTA/OpenID MFA extension (true/false, can't be installed simultaneously with TOTP and/or DUO)
 INSTALL_LDAP=""                 # Add Active Directory extension (true/false)
 INSTALL_QCONNECT=""             # Add Guacamole console quick connect feature (true/false)
 INSTALL_HISTREC=""              # Add Guacamole history recording storage feature (true/false)
@@ -167,6 +168,7 @@ wget -q --show-progress ${GITHUB}/4b-install-tls-letsencrypt-nginx.sh -O 4b-inst
 
 # Download the suite of optional feature adding scripts
 wget -q --show-progress ${GITHUB}/guac-optional-features/add-auth-duo.sh -O add-auth-duo.sh
+wget -q --show-progress ${GITHUB}/guac-optional-features/add-auth-openid-okta.sh -O add-auth-openid-okta.sh
 wget -q --show-progress ${GITHUB}/guac-optional-features/add-auth-ldap.sh -O add-auth-ldap.sh
 wget -q --show-progress ${GITHUB}/guac-optional-features/add-auth-totp.sh -O add-auth-totp.sh
 wget -q --show-progress ${GITHUB}/guac-optional-features/add-xtra-quickconnect.sh -O add-xtra-quickconnect.sh
@@ -477,26 +479,41 @@ fi
 echo
 # Prompt to install TOTP MFA
 echo -e "${LGREEN}Guacamole authentication extension options:${GREY}"
-if [[ -z "${INSTALL_TOTP}" ]] && [[ "${INSTALL_DUO}" != true ]]; then
+if [[ -z "${INSTALL_TOTP}" ]] && [[ "${INSTALL_DUO}" != true ]] && [[ "${INSTALL_OKTA}" != true ]]; then
     echo -e -n "AUTH: Install TOTP? (choose 'n' if you want Duo) [y/n]? [default n]: "
     read PROMPT
     if [[ ${PROMPT} =~ ^[Yy]$ ]]; then
         INSTALL_TOTP=true
         INSTALL_DUO=false
+        INSTALL_OKTA=false
     else
         INSTALL_TOTP=false
     fi
 fi
 
 # Prompt to install Duo MFA
-if [[ -z "${INSTALL_DUO}" ]] && [[ "${INSTALL_TOTP}" != true ]]; then
+if [[ -z "${INSTALL_DUO}" ]] && [[ "${INSTALL_TOTP}" != true ]] && [[ "${INSTALL_OKTA}" != true ]]; then
     echo -e -n "${GREY}AUTH: Install Duo? [y/n] [default n]: "
     read PROMPT
     if [[ ${PROMPT} =~ ^[Yy]$ ]]; then
         INSTALL_DUO=true
         INSTALL_TOTP=false
+        INSTALL_OKTA=false
     else
         INSTALL_DUO=false
+    fi
+fi
+
+# Prompt to install Duo MFA
+if [[ -z "${INSTALL_OKTA}" ]] && [[ "${INSTALL_TOTP}" != true ]] && [[ "${INSTALL_DUO}" != true ]]; then
+    echo -e -n "${GREY}AUTH: Install Okta/OpenID? [y/n] [default n]: "
+    read PROMPT
+    if [[ ${PROMPT} =~ ^[Yy]$ ]]; then
+        INSTALL_OKTA=true
+        INSTALL_DUO=true
+        INSTALL_TOTP=false
+    else
+        INSTALL_OKTA=false
     fi
 fi
 
@@ -506,7 +523,17 @@ if [[ "${INSTALL_TOTP}" = true ]] && [[ "${INSTALL_DUO}" = true ]]; then
     exit 1
 fi
 
-# Prompt to install Duo MFA
+if [[ "${INSTALL_TOTP}" = true ]] && [[ "${INSTALL_OKTA}" = true ]]; then
+    echo -e "${LRED}GUAC MFA: TOTP and Okta/OpenID cannot be installed at the same time.${GREY}" 1>&2
+    exit 1
+fi
+
+if [[ "${INSTALL_DUO}" = true ]] && [[ "${INSTALL_OKTA}" = true ]]; then
+    echo -e "${LRED}GUAC MFA: Duo and Okta/OpenID cannot be installed at the same time.${GREY}" 1>&2
+    exit 1
+fi
+
+# Prompt to install LDAP
 if [[ -z "${INSTALL_LDAP}" ]]; then
     echo -e -n "${GREY}AUTH: Install LDAP? [y/n] [default n]: "
     read PROMPT
@@ -834,6 +861,13 @@ if [[ $INSTALL_DUO == "true" ]]; then
     echo
     echo -e "${LYELLOW}Reminder: Duo requires extra account specific info configured in the\n/etc/guacamole/guacamole.properties file before you can log in to Guacamole."
     echo -e "See https://guacamole.apache.org/doc/gug/duo-auth.html"
+fi
+
+# Okta/OpenID Settings reminder - If Duo is selected you can't login to Guacamole until this extension is fully configured
+if [[ $INSTALL_OKTA == "true" ]]; then
+    echo
+    echo -e "${LYELLOW}Reminder: Okta/OpenID requires extra account specific info configured in the\n/etc/guacamole/guacamole.properties file before you can log in to Guacamole."
+    echo -e "See https://guacamole.apache.org/doc/gug/openid-auth.html"
 fi
 
 # LDAP Settings reminder, LDAP auth is not functional until the config is complete
